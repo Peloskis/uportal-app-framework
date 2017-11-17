@@ -45,7 +45,7 @@ define(['angular'], function(angular) {
           }
           promises.push(getSeenMessageIds());
 
-          $q.$all(promises)
+          $q.all(promises)
             .then(function(result) {
               $scope.hasMessages = true;
               $scope.$broadcast('messagesRefreshed');
