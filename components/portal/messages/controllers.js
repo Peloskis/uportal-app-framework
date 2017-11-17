@@ -39,12 +39,22 @@ define(['angular'], function(angular) {
         $scope.showMessagesFeatures = true;
 
         $scope.$on('refreshMessages', function() {
+          var promises = [];
           if (!$scope.messages.isArray) {
-            getMessages();
+            promises.push(getMessages());
           }
-          getSeenMessageIds();
-          $scope.hasMessages = true;
-          $scope.$broadcast('messagesRefreshed');
+          promises.push(getSeenMessageIds());
+
+          $q.$all(promises)
+            .then(function(result) {
+              $scope.hasMessages = true;
+              $scope.$broadcast('messagesRefreshed');
+              return result;
+            })
+            .catch(function(error) {
+              $log.warn(error);
+              $scope.$broadcast('messagesError');
+            });
         });
 
         $scope.$on('dismissMessage', function(event, dismissedId) {
@@ -85,13 +95,30 @@ define(['angular'], function(angular) {
                 $scope.messagesError = result;
               }
               filterMessages();
-              $scope.$broadcast('messagesRefreshed', $scope.messages);
               return allMessages;
             })
             .catch(function(error) {
               $log.warn('Problem getting all messages for messages controller');
               return error;
             });
+        };
+
+        var getSeenMessageIds = function() {
+          messagesService.getSeenMessageIds()
+            .then(function(result) {
+              if (result && angular.isArray(result)) {
+                $scope.seenMessageIds = result;
+              } else {
+                $log.warn('Unexpected result fetching seen ids ' + result);
+                $scope.allSeenMessageIds = [];
+              }
+              return $scope.seenMessageIds;
+            })
+            .catch(function(error) {
+              $log.warn(error);
+              $scope.seenMessageIds = [];
+            });
+            return $scope.seenMessageIds;
         };
 
         /**
@@ -125,8 +152,6 @@ define(['angular'], function(angular) {
             $q.all(promiseFilteredMessages)
               .then(filterMessagesSuccess)
               .catch(filterMessagesFailure);
-            // Separate all messages by their types
-            $scope.messages = $filter('separateMessageTypes')(allMessages);
         };
 
         /**
@@ -158,25 +183,8 @@ define(['angular'], function(angular) {
          * @param {Object} error
          */
         var filterMessagesFailure = function(error) {
+          $scope.messages = [];
           $log.warn('Problem getting messages from messagesService');
-        };
-
-        var getSeenMessageIds = function() {
-          messagesService.getSeenMessageIds()
-            .then(function(result) {
-              if (result && angular.isArray(result)) {
-                $scope.seenMessageIds = result;
-              } else {
-                $log.warn('Unexpected result fetching seen ids ' + result);
-                $scope.allSeenMessageIds = [];
-              }
-              return $scope.seenMessageIds;
-            })
-            .catch(function(error) {
-              $log.warn(error);
-              $scope.seenMessageIds = [];
-            });
-            return $scope.seenMessageIds;
         };
 
         /**
@@ -236,6 +244,22 @@ define(['angular'], function(angular) {
         vm.renderLimit = 3;
         vm.showMessagesFeatures = true;
 
+        $scope.$on('messagesRefreshed', function(messages) {
+          vm.notifications = $scope.messages.notifications;
+          vm.dismissedNotificationIds = $scope.seenMessageIds;
+          vm.priorityNotifications = $filter('filter')(
+            vm.notifications,
+            {priority: 'high'}
+          );
+          if (angular.equals($scope.$parent.showMessagesFeatures, true)) {
+            configureNotificationsScope();
+            configurePriorityNotificationsScope();
+          } else {
+            vm.showMessagesFeatures = false;
+            vm.isLoading = false;
+          }
+        });
+
         // //////////////////
         // Event listeners //
         // //////////////////
@@ -259,19 +283,6 @@ define(['angular'], function(angular) {
               vm.showMessagesFeatures = false;
               vm.isLoading = false;
             }
-          }
-        });
-
-        $scope.$on('messagesRefreshed', function(messages) {
-          if ($scope.$parent.messagesError) {
-            vm.messagesError = $scope.$parent.messagesError;
-          }
-          if (angular.equals($scope.$parent.showMessagesFeatures, true)) {
-            configureNotificationsScope();
-            configurePriorityNotificationsScope();
-          } else {
-            vm.showMessagesFeatures = false;
-            vm.isLoading = false;
           }
         });
 
