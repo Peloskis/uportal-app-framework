@@ -68,7 +68,7 @@ define(['angular'], function(angular) {
               });
           }
         });
-         
+
         // ////////////////
         // Local methods //
         // ////////////////
@@ -125,7 +125,6 @@ define(['angular'], function(angular) {
             $q.all(promiseFilteredMessages)
               .then(filterMessagesSuccess)
               .catch(filterMessagesFailure);
-         
             // Separate all messages by their types
             $scope.messages = $filter('separateMessageTypes')(allMessages);
         };
@@ -269,10 +268,15 @@ define(['angular'], function(angular) {
           }
           if (angular.equals($scope.$parent.showMessagesFeatures, true)) {
             configureNotificationsScope();
+            configurePriorityNotificationsScope();
           } else {
             vm.showMessagesFeatures = false;
             vm.isLoading = false;
           }
+        });
+
+        $scope.$on('messageDismissed', function() {
+          configurePriorityNotificationsScope();
         });
 
         // ////////////////
@@ -381,12 +385,13 @@ define(['angular'], function(angular) {
 
         /**
          * Alerts the UI that there are no priority notifications to show
-         */
+       
         var clearPriorityNotificationsFlags = function() {
           vm.priorityNotifications = [];
           // Notify listeners that priority notifications are gone
           messagesService.broadcastPriorityFlag(false);
         };
+          */
 
         // ////////////////
         // Scope methods //
