@@ -141,6 +141,42 @@ define(['angular'], function(angular) {
             });
         };
 
+
+        var getMessageData = function(message) {
+          $http.get(message.audienceFilter.dataUrl)
+            .then(function(result) {
+              var objectToFind = result.data;
+              // If dataObject specified, try to use it
+              if (result && message.audienceFilter.dataObject) {
+                objectToFind =
+                  objectToFind[message.audienceFilter.dataObject];
+              }
+              // If dataArrayFilter specified, then use it to filter
+              if (objectToFind && message.audienceFilter.dataArrayFilter) {
+                var arrayFilter = angular.fromJson(
+                  message.audienceFilter.dataArrayFilter
+                );
+                // If you try to do an array filter on a non-array,
+                // return blank
+                if (!angular.isArray(objectToFind)) {
+                  return;
+                }
+                if ($filter('filter')(
+                    objectToFind,
+                    arrayFilter
+                  ).length > 0) {
+                  return message;
+                }
+              } else if (objectToFind) {
+                return message;
+              }
+              return;
+            }).catch(function(error) {
+              $log.warn('Error retrieving data for notification');
+              $log.error(error);
+            });
+          };
+
         /**
          * Filter the array of messages based on if
          * data was requested before showing

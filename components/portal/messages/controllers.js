@@ -40,13 +40,13 @@ define(['angular'], function(angular) {
 
         $scope.$on('refreshMessages', function() {
           var promises = [];
-          if (!$scope.messages.isArray) {
-            promises.push(getMessages());
-          }
+          promises.push(getMessages());
           promises.push(getSeenMessageIds());
 
           $q.all(promises)
             .then(function(result) {
+              $scope.messages = result[0];
+              $scope.seenMessageIds[1];
               $scope.hasMessages = true;
               $scope.$broadcast('messagesRefreshed');
               return result;
@@ -91,16 +91,92 @@ define(['angular'], function(angular) {
               // Ensure messages exist and check for group filtering
               if (angular.isArray(result) && result.length > 0) {
                 allMessages = result;
-              } else if (angular.isString(result)) {
-                $scope.messagesError = result;
-              }
-              filterMessages();
-              return allMessages;
+                
+                resolveData(allMessages) 
+                   .then(function(result){
+                       return result;
+                   })
+                   .catch(function(error){
+                     $log.warn(error);
+                   });
+                }
+                return result;
             })
             .catch(function(error) {
               $log.warn('Problem getting all messages for messages controller');
               return error;
             });
+
+            return $scope.messages;
+        };
+
+        var resolveData = function(messages) {
+          var fetchedData = [];
+          var fetchedTitle = [];
+          var fetchedGroups = [];
+
+          getFilteredGroups(messages)
+            .then(function(result) {
+              fetchedGroups = result;
+              angular.forEach(result, function(message) {
+                if (message.audienceFilter.dataUrl) {
+                  fetchedData.push(message);
+                }
+                if (message.titleUrl) {
+                  fetchedTitle.push(message);
+                }
+              });
+               return result;
+            })
+            .catch(function(error) {
+              $log.warn(error);
+            });
+            
+            if (fetchedData.length == 0 && fetchedTitle.length == 0) {
+              return fetchedGroups;
+            }
+
+            var commonality = false;
+
+            angular.forEach(fetchedData, function(result) {
+              var index = fetchedTitle.indexOf(result);
+              if (index != -1) {
+                commonality = true;
+              }
+            });
+            
+            var promises = [];
+            var promiseData = messagesService.getMessagesByData(fetchedData);
+            var promiseTitle = messagesService.getMessagesByTitle(fetchedTitle);
+            promises.push(promiseData);
+            promises.push(promiseTitle);
+            $q.all(promises)
+              .then(function(result) {
+                  fetchedData = result[0];
+                  fetchedTitle = result[1];
+                  return result;
+              })
+              .catch(function(error) {
+                $log.warn(error);
+              });
+                
+            if (commonality) {
+              $log.warn('Need logic for dataurl and title commonality');
+            }
+          };
+
+        var getFilteredGroups = function(messages) {
+          if ($localStorage.disableGroupFilteringForMessages) {
+            return messages;
+          } else {
+            messagesService.getMessagesByGroup(messages)
+              .then(function(result) {
+                return result;
+              }).catch(function(error) {
+                $log.warn(error);
+                return [];
+              });
+          }
         };
 
         var getSeenMessageIds = function() {
@@ -128,6 +204,7 @@ define(['angular'], function(angular) {
         var filterMessages = function() {
           // Check if group filtering has been disabled
           if ($localStorage.disableGroupFilteringForMessages) {
+
             // Define promises to run if filtering is turned on
             promiseFilteredMessages = {
               filteredByGroup:
@@ -244,9 +321,9 @@ define(['angular'], function(angular) {
         vm.renderLimit = 3;
         vm.showMessagesFeatures = true;
 
-        $scope.$on('messagesRefreshed', function(messages) {
-          vm.notifications = $scope.messages.notifications;
-          vm.dismissedNotificationIds = $scope.seenMessageIds;
+        $scope.$on('messagesRefreshed', function(event, messages) {
+          vm.notifications = $scope.$parent.messages.notifications;
+          vm.dismissedNotificationIds = $scope.$parent.seenMessageIds;
           vm.priorityNotifications = $filter('filter')(
             vm.notifications,
             {priority: 'high'}
