@@ -24,9 +24,11 @@ define(['angular'], function(angular) {
     .controller('MessagesController', ['$q', '$log', '$scope', '$rootScope',
       '$location', '$localStorage', '$sessionStorage', '$filter', '$mdDialog',
       'APP_FLAGS', 'MISC_URLS', 'SERVICE_LOC', 'miscService', 'messagesService',
+      'keyValueService', 'KV_KEYS',
       function($q, $log, $scope, $rootScope, $location, $localStorage,
                $sessionStorage, $filter, $mdDialog, APP_FLAGS, MISC_URLS,
-               SERVICE_LOC, miscService, messagesService) {
+               SERVICE_LOC, miscService, messagesService, keyValueService,
+               KV_KEYS) {
         // //////////////////
         // Local variables //
         // //////////////////
@@ -36,6 +38,37 @@ define(['angular'], function(angular) {
         $scope.MISC_URLS = MISC_URLS;
         $scope.showMessagesFeatures = true;
 
+        $scope.$on('refreshMessages', function() {
+          if (!$scope.messages.isArray) {
+            getMessages();
+          }
+          getSeenMessageIds();
+          $scope.hasMessages = true;
+          $scope.$broadcast('messagesRefreshed');
+        });
+
+        $scope.$on('dismissMessage', function(event, dismissedId) {
+          var ids = [];
+          if (!$scope.seenMessageIds) {
+            ids = getSeenMessageIds();
+            $q.$resolve(ids);
+          } else {
+            ids = $scope.seenMessageIds;
+          }
+          var index = ids.indexOf(dismissedId);
+          if (index == -1) {
+            ids.push(dismissedId);
+            keyValueService.setValue(KV_KEYS.VIEWED_MESSAGE_IDS, ids)
+              .then(function(result) {
+                $scope.$broadcast('messageDismissed');
+                return result;
+              })
+              .catch(function(error) {
+                $log.warn(error);
+              });
+          }
+        });
+         
         // ////////////////
         // Local methods //
         // ////////////////
@@ -52,6 +85,7 @@ define(['angular'], function(angular) {
                 $scope.messagesError = result;
               }
               filterMessages();
+              $scope.$broadcast('messagesRefreshed', $scope.messages);
               return allMessages;
             })
             .catch(function(error) {
@@ -94,8 +128,6 @@ define(['angular'], function(angular) {
          
             // Separate all messages by their types
             $scope.messages = $filter('separateMessageTypes')(allMessages);
-            // Change hasMessages so child controllers can pick up on it
-            $scope.hasMessages = true;
         };
 
         /**
@@ -118,7 +150,6 @@ define(['angular'], function(angular) {
             );
             $scope.messages =
               $filter('separateMessageTypes')(reFilteredMessages);
-            $scope.hasMessages = true;
           }
         };
 
@@ -131,6 +162,24 @@ define(['angular'], function(angular) {
           $log.warn('Problem getting messages from messagesService');
         };
 
+        var getSeenMessageIds = function() {
+          messagesService.getSeenMessageIds()
+            .then(function(result) {
+              if (result && angular.isArray(result)) {
+                $scope.seenMessageIds = result;
+              } else {
+                $log.warn('Unexpected result fetching seen ids ' + result);
+                $scope.allSeenMessageIds = [];
+              }
+              return $scope.seenMessageIds;
+            })
+            .catch(function(error) {
+              $log.warn(error);
+              $scope.seenMessageIds = [];
+            });
+            return $scope.seenMessageIds;
+        };
+
         /**
          * Get messages if messaging features are enabled
          */
@@ -141,6 +190,7 @@ define(['angular'], function(angular) {
           if (!$rootScope.GuestMode && SERVICE_LOC.messagesURL
             && SERVICE_LOC.messagesURL !== '') {
             getMessages();
+            getSeenMessageIds();
           } else {
             // Messages features aren't configured properly, possibly
             // on purpose. Communicate this and hide features.
@@ -210,6 +260,18 @@ define(['angular'], function(angular) {
               vm.showMessagesFeatures = false;
               vm.isLoading = false;
             }
+          }
+        });
+
+        $scope.$on('messagesRefreshed', function(messages) {
+          if ($scope.$parent.messagesError) {
+            vm.messagesError = $scope.$parent.messagesError;
+          }
+          if (angular.equals($scope.$parent.showMessagesFeatures, true)) {
+            configureNotificationsScope();
+          } else {
+            vm.showMessagesFeatures = false;
+            vm.isLoading = false;
           }
         });
 
@@ -343,6 +405,9 @@ define(['angular'], function(angular) {
          * @param {boolean} isHighPriority
          */
         vm.dismissNotification = function(notification, isHighPriority) {
+          $scope.$emit('dismissMessage', notification.id);
+        };
+        /**
           vm.notifications = $filter('filterOutMessageWithId')(
             vm.notifications,
             notification.id
@@ -364,8 +429,10 @@ define(['angular'], function(angular) {
           if (isHighPriority) {
             clearPriorityNotificationsFlags();
           }
+           
+          $scope.$emit('dismissMessage', notification.id);
         };
-
+ */
         /**
          * On-click event to mark a notification as "unseen"
          * @param {Object} notification
@@ -433,6 +500,16 @@ define(['angular'], function(angular) {
         vm.pushGAEvent = function(category, action, label) {
           miscService.pushGAEvent(category, action, label);
         };
+
+
+        var init = function() {
+          if (!$scope.$parent.hasMessages) {
+            $scope.$emit('refreshMessages');
+            return null;
+          }
+        };
+
+        init();
     }])
 
     .controller('AnnouncementsController', ['$q', '$log', '$filter',
