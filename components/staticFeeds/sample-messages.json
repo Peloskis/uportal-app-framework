@@ -28,6 +28,55 @@
       "confirmButton": null
     },
     {
+      "id": "titular-test",
+      "title": "This is a test notification only visible to portal administrators.",
+      "titleShort": "Test admin notification",
+      "description": "This notification most fields of the message data model populated, even though many are unused. This is so there's something in place when we start experimenting with new usages. It is set to expire in one year.",
+      "descriptionShort": "This notification uses the new 'message' data model.",
+      "messageType": "notification",
+      "goLiveDate": "2017-08-14T10:50",
+      "expireDate": "2018-08-14T10:50",
+      "featureImageUrl": null,
+      "priority": null,
+      "audienceFilter": {
+      "groups": [""],
+      "dataUrl": "/portal/p/university-staff-benefits-statement/max/benefitStatements.resource.uP",
+      "dataObject": "report",
+      "dataArrayFilter": { "year": 2016, "fullTitle": "WRS"}
+      },
+      "actionButton": {
+      "label": "Go",
+      "url": "http://www.google.com"
+      },
+      "moreInfoButton": null,
+      "confirmButton": null
+    },
+    {
+      "id": "test-variable-title",
+      "title": "Hardcoded title",
+      "titleShort": "Hardcoded short title",
+      "titleUrl": "/aries/proxy/wiscmaildiscontinue",
+      "description": "A test message",
+      "descriptionShort": "predev version",
+      "messageType": "notification",
+      "goLiveDate": "2016-10-02",
+      "expireDate": "2017-12-31",
+      "featureImageUrl": null,
+      "priority": "high",
+      "recurrence": "true",
+      "audienceFilter": {
+        "groups": [
+           "Portal Administrators" 
+        ]
+      },
+      "actionButton": null,
+      "moreInfoButton": {
+        "label": "You are here",
+        "url": "https://map.what3words.com/zoom.venue.cages"
+      },
+      "confirmButton": null
+    },
+    {
       "id": "sample-uportal-app-framework-madison-priority-notification",
       "title": "This is a high priority notification. It should only appear if group filtering is disabled in /settings",
       "titleShort": null,
@@ -40,7 +89,7 @@
       "priority": "high",
       "dismissible": true,
       "audienceFilter": {
-        "groups": [""],
+        "groups": ["UW-Madison"],
         "dataUrl": "",
         "dataObject": "",
         "dataArrayFilter": {}

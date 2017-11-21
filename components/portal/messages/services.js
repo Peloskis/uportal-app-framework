@@ -152,48 +152,88 @@ define(['angular'], function(angular) {
         var getMessagesByData = function(messages) {
           // Initialize method variables
           var promises = [];
-          var filteredMessages = [];
-
+          var unprocessedMessages = [];
+          var messagesWithDataUrls = [];
+          var messagesWithTitles = [];
+          
           angular.forEach(messages, function(message) {
-            if (message.audienceFilter.dataUrl) {
-              // If the message has a dataUrl, add it to promises array
-              promises.push($http.get(message.audienceFilter.dataUrl)
-                .then(function(result) {
-                  var objectToFind = result.data;
-                  // If dataObject specified, try to use it
-                  if (result && message.audienceFilter.dataObject) {
-                    objectToFind =
-                      objectToFind[message.audienceFilter.dataObject];
-                  }
-                  // If dataArrayFilter specified, then use it to filter
-                  if (objectToFind && message.audienceFilter.dataArrayFilter) {
-                    var arrayFilter = angular.fromJson(
-                      message.audienceFilter.dataArrayFilter
-                    );
-                    // If you try to do an array filter on a non-array,
-                    // return blank
-                    if (!angular.isArray(objectToFind)) {
-                      return;
-                    }
-                    if ($filter('filter')(
-                        objectToFind,
-                        arrayFilter
-                      ).length > 0) {
-                      return message;
-                    }
-                  } else if (objectToFind) {
-                    return message;
-                  }
-                  return;
-                }).catch(function(error) {
-                  $log.warn('Error retrieving data for notification');
-                  $log.error(error);
-                }
-              ));
-            } else {
-              filteredMessages.push(message);
+            var beenProcessed = false;
+            if (message.audienceFilter.dataUrl
+              && message.audienceFilter.dataUrl.length > 0) {
+                messagesWithDataUrls.push(message);
+                beenProcessed = true;
+            }
+            if (message.titleUrl && message.titleUrl.length > 0) {
+              messagesWithTitles.push(message);
+              beenProcessed = true;
+            }
+            if (!beenProcessed) {
+              unprocessedMessages.push(message);
             }
           });
+          
+          angular.forEach(messagesWithDataUrls, function(message) {
+            promises.push($http.get(message.audienceFilter.dataUrl)
+            .then(function(result) {
+              var objectToFind = result.data;
+              if (result && message.audienceFilter.dataObject) {
+                objectToFind =
+                  objectToFind[message.audienceFilter.dataObject];
+              }
+              if (objectToFind && message.audienceFilter.dataArrayFilter) {
+                var arrayFilter = angular.fromJson(
+                  message.audienceFilter.dataArrayFilter
+                );
+                // If you try to do an array filter on a non-array,
+                // return blank
+                if (!angular.isArray(objectToFind)) {
+                  return;
+                }
+                if ($filter('filter')(
+                    objectToFind,
+                    arrayFilter
+                  ).length > 0) {
+                  return message;
+                }
+              } else if (objectToFind) {
+                return message;
+              }
+              return;
+            }).catch(function(error) {
+              $log.warn('Error retrieving data for notification');
+              $log.error(error);
+            }));
+          });
+  
+
+          angular.forEach(messagesWithTitles, function(message) {
+            promises.push($http.get(message.titleUrl)
+            .then(function(result) {
+                      if (result.data) {
+                        var titleObject = result.data;
+                        if (titleObject.result && titleObject.result.length > 0) {
+                          var fromApi = titleObject.result[0];
+                          if (fromApi.full) {
+                            message.title = fromApi.full;
+                          } else {
+                            message.title = fromApi;
+                          }
+                          filteredMessages.push(message);
+                        } else {
+                          // There is no data to display to the user,
+                          // either due to an error - or the owner of this
+                          // notification has nothing to display to this user.
+                          // Either way, we discard this notification.
+
+                          return null;
+                        }
+                      }
+                      return message;
+                    }).catch(function(error) {
+                      $log.warn(error);
+                    })
+                  );
+   
 
           // Once all the promises are prepared, run 'em
           return $q.all(promises)
@@ -205,8 +245,8 @@ define(['angular'], function(angular) {
               });
               return filteredMessages;
             });
-        };
-
+        });
+      };
         /**
          * Filter the array of messages based on if
          * a url to get the title was requested
@@ -284,6 +324,22 @@ define(['angular'], function(angular) {
             });
         };
 
+        var setSeenMessageIDs = function(seenIDs) {
+          // If K/V store isn't activated, don't proceed
+          if (!keyValueService.isKVStoreActivated()) {
+            return $q.resolve($sessionStorage.seenMessageIds);
+          }
+
+          return keyValueService.setValue(KV_KEYS.VIEWED_MESSAGE_IDS,
+            seenIDs)
+            .then(function() {
+              return seenIDs;
+            })
+            .catch(function(error) {
+              $log.warn('Problem setting seen message IDs in storage');
+              return error;
+            });
+        };
         /**
          * Set list of seen IDs in K/V store and session storage
          * @param {Array} originalSeenIds - The ids when the
@@ -362,6 +418,7 @@ define(['angular'], function(angular) {
           getMessagesByData: getMessagesByData,
           getSeenMessageIds: getSeenMessageIds,
           getMessagesByTitle: getMessagesByTitle,
+          setSeenMessageIDs: setSeenMessageIDs,
           setMessagesSeen: setMessagesSeen,
           broadcastPriorityFlag: broadcastPriorityFlag,
           broadcastAnnouncementFlag: broadcastAnnouncementFlag,
