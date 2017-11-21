@@ -141,7 +141,7 @@ define(['angular'], function(angular) {
             });
         };
 
-
+/** 
         var getMessageData = function(message) {
           $http.get(message.audienceFilter.dataUrl)
             .then(function(result) {
@@ -176,7 +176,7 @@ define(['angular'], function(angular) {
               $log.error(error);
             });
           };
-
+*/
         /**
          * Filter the array of messages based on if
          * data was requested before showing

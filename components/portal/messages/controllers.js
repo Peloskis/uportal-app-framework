@@ -39,21 +39,22 @@ define(['angular'], function(angular) {
         $scope.showMessagesFeatures = true;
 
         $scope.$on('refreshMessages', function() {
-          var promises = [];
-          promises.push(getMessages());
-          promises.push(getSeenMessageIds());
-
-          $q.all(promises)
+          refreshAllMessages()
             .then(function(result) {
-              $scope.messages = result[0];
-              $scope.seenMessageIds[1];
-              $scope.hasMessages = true;
-              $scope.$broadcast('messagesRefreshed');
-              return result;
+              return resolveData($scope.messages);
+            }).catch(function(error) {
+              $log.warn(error);
+            })
+          ;
+        });
+
+        $scope.$on('resolveMessages', function() {
+          return resolveData($scope.messages)
+            .then(function(result) {
+                return null;
             })
             .catch(function(error) {
               $log.warn(error);
-              $scope.$broadcast('messagesError');
             });
         });
 
@@ -79,6 +80,36 @@ define(['angular'], function(angular) {
           }
         });
 
+        var refreshAllMessages = function() {
+          $scope.hasMessages = false;
+          var promises = [];
+          promises.push(getMessages());
+          promises.push(getSeenMessageIds());
+
+          $q.all(promises)
+            .then(function(result) {
+              if (result[0] && angular.isArray(result[0])) {
+                $scope.messages = result[0];
+                resolveData($scope.messages);
+              } else {
+                result[0] = [];
+                $scope.messages = [];
+              }
+
+              if (result[1] && angular.isArray(result[1])) {
+                $scope.seenMessageIds[1];
+              } else {
+                result[1] = [];
+                $scope.seenMessageIds = [];
+              }
+              return result;
+            })
+            .catch(function(error) {
+              $log.warn(error);
+              $scope.$broadcast('messagesError');
+            });
+        };
+
         // ////////////////
         // Local methods //
         // ////////////////
@@ -91,34 +122,28 @@ define(['angular'], function(angular) {
               // Ensure messages exist and check for group filtering
               if (angular.isArray(result) && result.length > 0) {
                 allMessages = result;
-                
-                resolveData(allMessages) 
-                   .then(function(result){
-                       return result;
-                   })
-                   .catch(function(error){
-                     $log.warn(error);
-                   });
-                }
-                return result;
+
+                resolveData(allMessages);
+              }
+              return result;
             })
             .catch(function(error) {
               $log.warn('Problem getting all messages for messages controller');
               return error;
             });
-
-            return $scope.messages;
+          return $scope.messages;
         };
 
         var resolveData = function(messages) {
+          $scope.$broadcast('messagesResolving');
           var fetchedData = [];
           var fetchedTitle = [];
           var fetchedGroups = [];
 
-          getFilteredGroups(messages)
+          messagesService.getMessagesByGroup(messages)
             .then(function(result) {
               fetchedGroups = result;
-              angular.forEach(result, function(message) {
+              angular.forEach(fetchedGroups, function(message) {
                 if (message.audienceFilter.dataUrl) {
                   fetchedData.push(message);
                 }
@@ -126,17 +151,18 @@ define(['angular'], function(angular) {
                   fetchedTitle.push(message);
                 }
               });
-               return result;
+              return null;
             })
             .catch(function(error) {
               $log.warn(error);
             });
             
             if (fetchedData.length == 0 && fetchedTitle.length == 0) {
+              $scope.$broadcast('messagesResolved');
               return fetchedGroups;
             }
 
-            var commonality = false;
+            var commonality = true;
 
             angular.forEach(fetchedData, function(result) {
               var index = fetchedTitle.indexOf(result);
@@ -154,6 +180,7 @@ define(['angular'], function(angular) {
               .then(function(result) {
                   fetchedData = result[0];
                   fetchedTitle = result[1];
+                  $scope.$broadcast('messagesResolved');
                   return result;
               })
               .catch(function(error) {
@@ -161,23 +188,9 @@ define(['angular'], function(angular) {
               });
                 
             if (commonality) {
-              $log.warn('Need logic for dataurl and title commonality');
+              $log.warn('Do I get here');
             }
           };
-
-        var getFilteredGroups = function(messages) {
-          if ($localStorage.disableGroupFilteringForMessages) {
-            return messages;
-          } else {
-            messagesService.getMessagesByGroup(messages)
-              .then(function(result) {
-                return result;
-              }).catch(function(error) {
-                $log.warn(error);
-                return [];
-              });
-          }
-        };
 
         var getSeenMessageIds = function() {
           messagesService.getSeenMessageIds()
@@ -322,46 +335,17 @@ define(['angular'], function(angular) {
         vm.showMessagesFeatures = true;
 
         $scope.$on('messagesRefreshed', function(event, messages) {
-          vm.notifications = $scope.$parent.messages.notifications;
+          vm.notifications = $scope.$parent.messages;
           vm.dismissedNotificationIds = $scope.$parent.seenMessageIds;
           vm.priorityNotifications = $filter('filter')(
             vm.notifications,
             {priority: 'high'}
           );
-          if (angular.equals($scope.$parent.showMessagesFeatures, true)) {
-            configureNotificationsScope();
-            configurePriorityNotificationsScope();
-          } else {
-            vm.showMessagesFeatures = false;
-            vm.isLoading = false;
-          }
         });
 
         // //////////////////
         // Event listeners //
         // //////////////////
-        /**
-         * When the parent controller has messages, initialize
-         * things dependent on messages
-         */
-        $scope.$watch('$parent.hasMessages', function(hasMessages) {
-          // If the parent scope has messages and notifications are enabled,
-          // complete initialization
-          if (hasMessages) {
-            // Check if messages service failed
-            if ($scope.$parent.messagesError) {
-              vm.messagesError = $scope.$parent.messagesError;
-            }
-            // If messages config is set up, configure scope
-            // Else hide messages features
-            if (angular.equals($scope.$parent.showMessagesFeatures, true)) {
-              configureNotificationsScope();
-            } else {
-              vm.showMessagesFeatures = false;
-              vm.isLoading = false;
-            }
-          }
-        });
 
         $scope.$on('messageDismissed', function() {
           configurePriorityNotificationsScope();
@@ -370,83 +354,6 @@ define(['angular'], function(angular) {
         // ////////////////
         // Local methods //
         // ////////////////
-        /**
-         * Get notifications from parent scope, then pass them on
-         * for filtering by seen/unseen
-         */
-        var configureNotificationsScope = function() {
-          if ($scope.$parent.messages.notifications) {
-            allNotifications = $scope.$parent.messages.notifications;
-            // Get seen message IDs, then configure scope
-            $q.all(promiseSeenMessageIds)
-              .then(getSeenMessageIdsSuccess)
-              .catch(getSeenMessageIdsFailure);
-          }
-        };
-
-        /**
-         * Separate seen and unseen notifications, then set scope variables
-         * @param {Object} result
-         */
-        var getSeenMessageIdsSuccess = function(result) {
-          if (result.seenMessageIds && angular.isArray(result.seenMessageIds)
-            && result.seenMessageIds.length > 0) {
-            // Save all seenMessageIds for later
-            allSeenMessageIds = result.seenMessageIds;
-
-            // Separate seen and unseen
-            separatedNotifications = $filter('filterSeenAndUnseen')(
-              allNotifications,
-              result.seenMessageIds
-            );
-            angular.forEach(separatedNotifications.seen, function(message) {
-              if (message.recurrence) {
-                var index = separatedNotifications.seen
-                  .indexOf(message);
-                separatedNotifications.unseen.push(message);
-                separatedNotifications.seen.splice(index, 1);
-              }
-            });
-
-            // Set scope notifications and dismissed notifications
-            vm.notifications = separatedNotifications.unseen;
-            vm.dismissedNotifications = separatedNotifications.seen;
-
-            // Set local dismissedNotificationIds (used for tracking
-            // dismissed messages in the K/V store
-            angular.forEach(vm.dismissedNotifications, function(value) {
-              dismissedNotificationIds.push(value.id);
-            });
-          } else {
-            // If there aren't any seen notification IDs, just set all
-            // notifications
-            vm.notifications = allNotifications;
-          }
-
-          // Configure priority notifications scope
-          configurePriorityNotificationsScope();
-
-          // Set aria-label in notifications bell
-          vm.status = 'You have '
-            + (vm.notifications.length === 0
-              ? 'no' : vm.notifications.length)
-            + ' notifications';
-
-          // Stop loading spinner
-          vm.isLoading = false;
-        };
-
-        /**
-         * Handle errors getting seen message IDs
-         * @param {Object} error
-         */
-        var getSeenMessageIdsFailure = function(error) {
-          $log.warn('Couldn\'t get seen message IDs for notifications ' +
-            ' controller.');
-          // Stop loading spinner
-          vm.isLoading = false;
-        };
-
         /**
          * Alert the UI to show priority notifications if they exist
          */
